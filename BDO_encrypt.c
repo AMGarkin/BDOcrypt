@@ -1,6 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "ice.h"
+#include <cwchar>
+#include "zlib.h"
+
+const wchar_t CHAR_NULL = 0x0000;
+const wchar_t CHAR_CR = 0x000D;
+const wchar_t CHAR_LF = 0x000A;
+const unsigned long MAX_BUFF_SIZE = 4096;
+
 
 int main(int argc, char **argv)
 {
@@ -18,38 +25,87 @@ int main(int argc, char **argv)
 		printf("File not found: %s", srcFileName);
 		return -1;
 	}
+	FILE* tmpFile = tmpfile();
 	FILE* outFile = fopen(outFileName, "wb");
 
-	size_t fileSize, dataSize;
-	fseek(srcFile, 0, SEEK_END);
-	fileSize = ftell(srcFile);
-	fseek(srcFile, 0, SEEK_SET);
 
-	dataSize = (fileSize % 8) == 0 ? fileSize : fileSize + 8 - (fileSize % 8);
-	
-	unsigned char *ptext = (unsigned char *) calloc(dataSize, sizeof(unsigned char));
-	unsigned char *ctext = (unsigned char *) calloc(dataSize, sizeof(unsigned char));
+	///Convert .txt source file into temporary .bss file
+	unsigned long strSize;
+	unsigned long strType;
+	unsigned long strID1;
+	unsigned long strID2; //for some reason "short" doesn't work well with fwscanf()
+	unsigned char strID3;
+	unsigned char strID4;
+	int a;
+	wchar_t strBuff[MAX_BUFF_SIZE];
 
-	fread(ptext, 1, fileSize, srcFile);
+	while (1){
+		wmemset(strBuff, CHAR_NULL, MAX_BUFF_SIZE);
 
-	const unsigned char *bdo_ice_key = (const unsigned char*)"\x51\xF3\x0F\x11\x04\x24\x6A\x00";
+		if (fwscanf(srcFile, L"%u\t%u\t%u\t%u\t%u\t", &strType, &strID1, &strID2, &strID3, &strID4) < 5) break; //this pattern "eats" leading white space from next string, so I had to enclose strings in double quotes (in bss -> txt conversion)
+		
+		fseek(srcFile, 2, SEEK_CUR); //skip leading double quotes
+		
+		for (a = 0; a < MAX_BUFF_SIZE; a++) {
+			fread(&strBuff[a], 2, 1, srcFile);
+			if (a > 0) {
+				if (strBuff[a] == CHAR_LF && strBuff[a-1] == CHAR_CR) {
+					if (strBuff[a-2] == L'"') {
+						strBuff[a-2] = CHAR_NULL;
+					}
+					strBuff[a-1] = CHAR_NULL;
+					strBuff[a] = CHAR_NULL;
+					break;
+				}
+				if (strBuff[a] == L'n' && strBuff[a-1] == L'\\') {
+					a--;
+					strBuff[a] = CHAR_LF;
+				}
+			}
+		}
 
-	ICE_KEY *ik = ice_key_create(0);
-	ice_key_set(ik, bdo_ice_key);
+		strSize = wcslen(strBuff);
 
-	size_t cuts = dataSize/8;
-	while (cuts--){
-		ice_key_encrypt(ik, ptext, ctext); // key, in (decrypted text), out (encrypted text)
-
-		ptext +=8;
-		ctext +=8;
+		fwrite(&strSize, 4, 1, tmpFile);
+		fwrite(&strType, 4, 1, tmpFile);
+		fwrite(&strID1,  4, 1, tmpFile);
+		fwrite(&strID2,  2, 1, tmpFile);
+		fwrite(&strID3,  1, 1, tmpFile);
+		fwrite(&strID4,  1, 1, tmpFile);
+		fwrite(&strBuff, 2, strSize, tmpFile);
+		fputwc(CHAR_NULL, tmpFile);
+		fputwc(CHAR_NULL, tmpFile);
 	}
 
-	ctext -= dataSize; // reset the pointer back to the beginning.
 
-	fwrite(ctext, 1, dataSize, outFile);
+	///Compress temporary .bss file to .loc
+	unsigned long compressedSize = 0;
+	unsigned long uncompressedSize = 0;
+
+	fseek(tmpFile, 0, SEEK_END);
+	uncompressedSize = ftell(tmpFile);
+	rewind(tmpFile);
+	
+	compressedSize = compressBound(uncompressedSize);
+
+	unsigned char *pCompressedData = (unsigned char *) calloc(compressedSize, sizeof(unsigned char));
+	unsigned char *pUncompressedData = (unsigned char *) calloc(uncompressedSize, sizeof(unsigned char));
+
+	fread(pUncompressedData, 1, uncompressedSize, tmpFile);
+
+	int result = compress2(pCompressedData, &compressedSize, pUncompressedData, uncompressedSize, Z_BEST_SPEED);
+
+	if (result == Z_OK) {
+		fwrite(&uncompressedSize, 1, 4, outFile);
+		fwrite(pCompressedData, 1, compressedSize, outFile);
+	} else if (result == Z_MEM_ERROR) {
+		printf("ERROR: Not enough memory.");
+	} else if (result == Z_BUF_ERROR) {
+		printf("ERROR: Output buffer is too small.");
+	}
 
 	fclose(srcFile);
+	fclose(tmpFile);
 	fclose(outFile);
 
 	return 0;
