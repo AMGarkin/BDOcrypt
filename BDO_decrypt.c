@@ -4,6 +4,7 @@
 #include "zlib.h"
 
 const wchar_t CHAR_LF = 0x000A;
+const wchar_t BOM_UTF16LE = 0xFEFF;
 const unsigned long MAX_BUFF_SIZE = 4096;
 
 
@@ -32,7 +33,7 @@ int main(int argc, char **argv)
 	fseek(srcFile, 0, SEEK_END);
 	compressedSize = ftell(srcFile) - 4; // 1st 4 bytes holds information about uncompressed data size
 	rewind(srcFile);
-	
+
 	fread(&uncompressedSize, 4, 1, srcFile);
 
 	unsigned char *pCompressedData = (unsigned char *) calloc(compressedSize, sizeof(unsigned char));
@@ -57,6 +58,9 @@ int main(int argc, char **argv)
 		wchar_t strBuff[MAX_BUFF_SIZE];
 
 		rewind(tmpFile);
+
+		//write BOM (byte order mark) 0xFEFF = UTF-16 little-endian
+		fwrite(&BOM_UTF16LE, 2, 1, outFile);
 
 		while (1){
 			if (fread(&strSize, 4, 1, tmpFile) != 1) break;
