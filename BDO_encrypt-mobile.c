@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <cstring>
 #include "zlib.h"
 
 const unsigned char CHAR_NULL = 0x00;
