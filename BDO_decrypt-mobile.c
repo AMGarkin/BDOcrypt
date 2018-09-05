@@ -72,11 +72,8 @@ int main(int argc, char **argv)
 			b = 0;
 			for (a = 0; a < strSize + 1; a++) {
 				if (fread(&tmp, 1, 1, tmpFile) != 1) break;
-				//a bit of hax for CR+LF line breaks
-				if (tmp == CHAR_CR) {
-					strBuff[b] = '\\';
-					b++;
-				} else if (tmp == CHAR_LF) {
+				if (tmp == CHAR_LF && strBuff[b-1] == CHAR_CR) { //replace CR+LF with "\n"
+					strBuff[b-1] = '\\';
 					strBuff[b] = 'n';
 					b++;
 				} else {
