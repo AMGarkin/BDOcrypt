@@ -100,7 +100,7 @@ int main(int argc, char **argv)
 
 	fread(pUncompressedData, 1, uncompressedSize, tmpFile);
 
-	int result = compress2(pCompressedData, &compressedSize, pUncompressedData, uncompressedSize, Z_BEST_SPEED);
+	int result = compress2(pCompressedData, &compressedSize, pUncompressedData, uncompressedSize, Z_BEST_COMPRESSION);
 
 	if (result == Z_OK) {
 		fwrite(&uncompressedSize, 1, 4, outFile);
